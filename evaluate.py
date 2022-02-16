@@ -33,7 +33,7 @@ if __name__ == "__main__":
     # Get checkpoint
     ckpt = torch.load(os.path.join(args.mdl, 'model.pth'), map_location=lambda storage, loc: storage)
     # Get config
-    config = os.path.join(args.mdl, 'config.json')
+    config = os.path.join(args.mdl, 'args.json')
     with open(config, 'r') as f:
         config_dict = json.load(f)
     # Get model
@@ -48,7 +48,9 @@ if __name__ == "__main__":
     model = model.to(device)
     # Get traces
     ff = h5py.File(args.path_to_traces, 'r')
-    traces = ff[args.traces_dset]
+    traces_all = ff[args.traces_dset]
+    n_valid = 100
+    traces = traces_all[:n_valid]
     n_total = len(traces)
     if args.ids_dset:
         ids = ff[args.ids_dset]

@@ -9,9 +9,10 @@ import numpy as np
 
 
 def compute_loss(ages, pred_ages, weights):
-    diff = ages.flatten() - pred_ages.flatten()
+    diff = torch.abs(ages.flatten() - pred_ages.flatten())
     loss = torch.sum(weights.flatten() * diff * diff)
-    return loss
+    diff_w = torch.sum(weights.flatten() * diff)
+    return loss, diff_w
 
 
 def compute_weights(ages, max_weight=np.inf):
@@ -41,7 +42,7 @@ def train(ep, dataload):
         # Send to device
         # Forward pass
         pred_ages = model(traces)
-        loss = compute_loss(ages, pred_ages, weights)
+        loss, diff_w = compute_loss(ages, pred_ages, weights)
         # Backward pass
         loss.backward()
         # Optimize
@@ -60,6 +61,7 @@ def train(ep, dataload):
 def eval(ep, dataload):
     model.eval()
     total_loss = 0
+    total_diff = 0
     n_entries = 0
     eval_desc = "Epoch {:2d}: valid - Loss: {:.6f}"
     eval_bar = tqdm(initial=0, leave=True, total=len(dataload),
@@ -70,17 +72,18 @@ def eval(ep, dataload):
         with torch.no_grad():
             # Forward pass
             pred_ages = model(traces)
-            loss = compute_loss(ages, pred_ages, weights)
+            loss, diff_w = compute_loss(ages, pred_ages, weights)
             # Update outputs
             bs = len(traces)
             # Update ids
             total_loss += loss.detach().cpu().numpy()
+            total_diff += diff_w.detach().cpu().numpy()
             n_entries += bs
             # Print result
             eval_bar.desc = eval_desc.format(ep, total_loss / n_entries)
             eval_bar.update(1)
     eval_bar.close()
-    return total_loss / n_entries
+    return total_loss / n_entries, total_diff / n_entries
 
 
 if __name__ == "__main__":
@@ -204,7 +207,8 @@ if __name__ == "__main__":
                                     'weighted_rmse', 'weighted_mae', 'rmse', 'mse'])
     for ep in range(start_epoch, args.epochs):
         train_loss = train(ep, train_loader)
-        valid_loss = eval(ep, valid_loader)
+        valid_loss, weighted_mae = eval(ep, valid_loader)
+        weighted_rmse = np.sqrt(valid_loss)
         # Save best model
         if valid_loss < best_loss:
             # Save model
@@ -227,7 +231,9 @@ if __name__ == "__main__":
                  .format(ep, train_loss, valid_loss, learning_rate))
         # Save history
         history = history.append({"epoch": ep, "train_loss": train_loss,
-                                  "valid_loss": valid_loss, "lr": learning_rate}, ignore_index=True)
+                                  "valid_loss": valid_loss, "lr": learning_rate,
+                                  "weighted_rmse": weighted_rmse,  'weighted_mae': weighted_mae},
+                                  ignore_index=True)
         history.to_csv(os.path.join(folder, 'history.csv'), index=False)
         # Update learning rate
         scheduler.step(valid_loss)

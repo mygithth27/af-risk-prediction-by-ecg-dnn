@@ -18,6 +18,15 @@ if __name__ == "__main__":
 
     df = pd.read_csv(args.history_file)
 
+    # Plot train_loss
+    fig, ax = plt.subplots()
+    ax.plot(df['epoch']+1, df['train_loss'], label='train', color='blue')
+    ax.set_xlabel('epoch')
+    ax.set_ylabel('training loss', color='blue')
+    ax.set_ylim((8, 14))
+    axt = ax.twinx()
+
+    '''
     # Plot MAE
     fig, ax = plt.subplots()
     ax.plot(df['epoch']+1, df['mae'], label='train', color='blue')
@@ -25,6 +34,7 @@ if __name__ == "__main__":
     ax.set_ylabel('MAE (years)', color='blue')
     ax.set_ylim((8, 14))
     axt = ax.twinx()
+    '''
 
     # Plot learning rate
     axt.step(df['epoch']+1, df['lr'], label='train', alpha=0.4, color='k')
@@ -36,3 +46,4 @@ if __name__ == "__main__":
         plt.savefig(args.save)
     else:
         plt.show()
+
