@@ -25,10 +25,10 @@ class BatchDataloader:
             self.start = end
             end = min(self.start + self.batch_size, self.end_idx)
             batch_mask = self.mask[self.start:end]
-        batch = [np.array(t[self.start:end]) for t in self.tensors]
+        batch = [np.array(t[self.start:end], dtype=np.float32) for t in self.tensors]
         self.start = end
         self.sum += sum(batch_mask)
-        return [torch.tensor(b[batch_mask], dtype=torch.float32) for b in batch]
+        return [torch.tensor(b[batch_mask]) for b in batch]
 
     def __iter__(self):
         self.start = self.start_idx
