@@ -126,6 +126,10 @@ class ResNet1d(nn.Module):
         n_filters_last, n_samples_last = blocks_dim[-1]
         last_layer_dim = n_filters_last * n_samples_last
         self.lin = nn.Linear(last_layer_dim, n_classes)
+
+        #self.W = nn.Parameter(0.1 * torch.randn(last_layer_dim, n_classes))
+        #self.b = nn.Parameter(torch.zeros(n_classes))
+
         self.n_blk = len(blocks_dim)
 
     def forward(self, x):
@@ -144,5 +148,6 @@ class ResNet1d(nn.Module):
 
         # Fully conected layer
         x = self.lin(x)
+        #x = x.mm(self.W) + self.b    # An alternative to nn.Linear()
         return x
 

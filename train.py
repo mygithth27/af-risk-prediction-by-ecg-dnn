@@ -3,6 +3,7 @@ import torch
 import os
 from tqdm import tqdm
 from resnet import ResNet1d
+import torch.nn.functional as F
 from dataloader import BatchDataloader
 import torch.optim as optim
 import numpy as np
@@ -12,7 +13,17 @@ def compute_loss(ages, pred_ages, weights):
     diff = torch.abs(ages.flatten() - pred_ages.flatten())
     loss = torch.sum(weights.flatten() * diff * diff)
     diff_w = torch.sum(weights.flatten() * diff)
-    return loss, diff_w
+    return loss
+
+def crossentropy(G, Y):
+    '''Compute loss, classification case'''
+    # convert labels to onehot encoding
+    n_classes = 3
+    G = F.softmax(G, dim=1)
+    Y_onehot = torch.eye(n_classes, device=device)[Y-1]
+
+    #return -(Y_onehot * G.log()).sum(dim = 1).sum(dim=0)
+    return -(Y_onehot * G.log()).sum()
 
 
 def compute_weights(ages, max_weight=np.inf):
@@ -34,15 +45,18 @@ def train(ep, dataload):
     train_desc = "Epoch {:2d}: train - Loss: {:.6f}"
     train_bar = tqdm(initial=0, leave=True, total=len(dataload),
                      desc=train_desc.format(ep, 0, 0), position=0)
-    for traces, ages, weights in dataload:
+    for traces, af_classes in dataload:
         traces = traces.transpose(1, 2)
-        traces, ages, weights = traces.to(device), ages.to(device), weights.to(device)
+        traces, af_classes = traces.to(device), af_classes.to(device)
         # Reinitialize grad
         model.zero_grad()
         # Send to device
         # Forward pass
-        pred_ages = model(traces)
-        loss, diff_w = compute_loss(ages, pred_ages, weights)
+        pred_classes = model(traces)
+        #loss = compute_loss(ages, pred_ages, weights)
+        pred_classes = pred_classes.type(torch.DoubleTensor)  # float type raises error
+        af_classes = (af_classes - 1).type(torch.LongTensor)  # The targets should be in the range [0, 2], Pytorch requires
+        loss = F.cross_entropy(pred_classes, af_classes)
         # Backward pass
         loss.backward()
         # Optimize
@@ -61,29 +75,35 @@ def train(ep, dataload):
 def eval(ep, dataload):
     model.eval()
     total_loss = 0
-    total_diff = 0
+    #total_diff = 0
     n_entries = 0
     eval_desc = "Epoch {:2d}: valid - Loss: {:.6f}"
     eval_bar = tqdm(initial=0, leave=True, total=len(dataload),
                     desc=eval_desc.format(ep, 0, 0), position=0)
-    for traces, ages, weights in dataload:
+    for traces, af_classes in dataload:
         traces = traces.transpose(1, 2)
-        traces, ages, weights = traces.to(device), ages.to(device), weights.to(device)
+        print(traces.shape)
+        print(traces)
+        a = b
+        traces, af_classes = traces.to(device), af_classes.to(device)
         with torch.no_grad():
             # Forward pass
-            pred_ages = model(traces)
-            loss, diff_w = compute_loss(ages, pred_ages, weights)
+            pred_classes = model(traces)
+            #loss = compute_loss(ages, pred_ages, weights)
+            pred_classes = pred_classes.type(torch.DoubleTensor)  # float type raises error
+            af_classes = (af_classes - 1).type(torch.LongTensor)
+            loss = F.cross_entropy(pred_classes, af_classes)
             # Update outputs
             bs = len(traces)
             # Update ids
             total_loss += loss.detach().cpu().numpy()
-            total_diff += diff_w.detach().cpu().numpy()
+            #total_diff += diff_w.detach().cpu().numpy()
             n_entries += bs
             # Print result
             eval_bar.desc = eval_desc.format(ep, total_loss / n_entries)
             eval_bar.update(1)
     eval_bar.close()
-    return total_loss / n_entries, total_diff / n_entries
+    return total_loss / n_entries
 
 
 if __name__ == "__main__":
@@ -130,13 +150,13 @@ if __name__ == "__main__":
                         help='traces dataset in the hdf5 file.')
     parser.add_argument('--ids_dset', default='id_exam',
                         help='by default consider the ids are just the order')
-    parser.add_argument('--age_col', default='age',
+    parser.add_argument('--class_col', default='exam_class',
                         help='column with the age in csv file.')
     parser.add_argument('--ids_col', default=None,
                         help='column with the ids in csv file.')
     parser.add_argument('--cuda', action='store_false',
                         help='use cuda for computations. (default: True)')
-    parser.add_argument('--n_valid', type=int, default=5000,
+    parser.add_argument('--n_valid', type=int, default=2500,
                         help='the first `n_valid` exams in the hdf will be for validation.'
                              'The rest is for training')
     parser.add_argument('path_to_traces',
@@ -171,23 +191,31 @@ if __name__ == "__main__":
     if args.ids_dset:
         h5ids = f[args.ids_dset]
         df = df.reindex(h5ids, fill_value=False, copy=True)
-    ages = df[args.age_col]
+    #ages = df[args.age_col]
+    af_classes = df[args.class_col]
     # Train/ val split
     #valid_mask = np.arange(len(df)) <= args.n_valid
     #train_mask = ~valid_mask
 
-    valid_mask = np.arange(len(df)) <= args.n_valid
-    train_mask = (~valid_mask) & (np.arange(len(df)) < 30000)
+    print(len(af_classes))
+    mask_classes = (df[args.class_col] != 0).to_numpy()
+    valid_mask_0 = np.arange(len(df)) <= args.n_valid	# Choose a small chunk of data for testing
+    train_mask_0 = (~valid_mask_0) & (np.arange(len(df)) < 10000)
+
+    valid_mask = valid_mask_0 & mask_classes
+    train_mask = train_mask_0 & mask_classes
+
+    print(len(train_mask))
     # weights
-    weights = compute_weights(ages)
+    # weights = compute_weights(ages)
     # Dataloader
-    train_loader = BatchDataloader(traces, ages, weights, bs=args.batch_size, mask=train_mask)
-    valid_loader = BatchDataloader(traces, ages, weights, bs=args.batch_size, mask=valid_mask)
+    train_loader = BatchDataloader(traces, af_classes, bs=args.batch_size, mask=train_mask)
+    valid_loader = BatchDataloader(traces, af_classes, bs=args.batch_size, mask=valid_mask)
     tqdm.write("Done!")
 
     tqdm.write("Define model...")
     N_LEADS = 12  # the 12 leads
-    N_CLASSES = 1  # just the age
+    N_CLASSES = 3  # Classes 1, 2 and 3
     model = ResNet1d(input_dim=(N_LEADS, args.seq_length),
                      blocks_dim=list(zip(args.net_filter_size, args.net_seq_lengh)),
                      n_classes=N_CLASSES,
@@ -213,8 +241,8 @@ if __name__ == "__main__":
                                     'weighted_rmse', 'weighted_mae', 'rmse', 'mse'])
     for ep in range(start_epoch, args.epochs):
         train_loss = train(ep, train_loader)
-        valid_loss, weighted_mae = eval(ep, valid_loader)
-        weighted_rmse = np.sqrt(valid_loss)
+        valid_loss = eval(ep, valid_loader)
+
         # Save best model
         if valid_loss < best_loss:
             # Save model
@@ -237,8 +265,7 @@ if __name__ == "__main__":
                  .format(ep, train_loss, valid_loss, learning_rate))
         # Save history
         history = history.append({"epoch": ep, "train_loss": train_loss,
-                                  "valid_loss": valid_loss, "lr": learning_rate,
-                                  "weighted_rmse": weighted_rmse,  'weighted_mae': weighted_mae},
+                                  "valid_loss": valid_loss, "lr": learning_rate},
                                   ignore_index=True)
         history.to_csv(os.path.join(folder, 'history.csv'), index=False)
         # Update learning rate
