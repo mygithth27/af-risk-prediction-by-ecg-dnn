@@ -82,9 +82,9 @@ def eval(ep, dataload):
                     desc=eval_desc.format(ep, 0, 0), position=0)
     for traces, af_classes in dataload:
         traces = traces.transpose(1, 2)
-        print(traces.shape)
-        print(traces)
-        a = b
+        #print(traces.shape)
+        #print(traces)
+        #a = b
         traces, af_classes = traces.to(device), af_classes.to(device)
         with torch.no_grad():
             # Forward pass
@@ -136,7 +136,7 @@ if __name__ == "__main__":
                         help='minimum learning rate (default: 1e-7)')
     parser.add_argument("--lr_factor", type=float, default=0.1,
                         help='reducing factor for the lr in a plateu (default: 0.1)')
-    parser.add_argument('--net_filter_size', type=int, nargs='+', default=[64, 128, 196, 256, 320],
+    parser.add_argument('--net_filter_size', type=int, nargs='+', default=[64, 128, 192, 256, 320],
                         help='filter size in resnet layers (default: [64, 128, 196, 256, 320]).')
     parser.add_argument('--net_seq_lengh', type=int, nargs='+', default=[4096, 1024, 256, 64, 16],
                         help='number of samples per resnet layer (default: [4096, 1024, 256, 64, 16]).')
@@ -152,7 +152,7 @@ if __name__ == "__main__":
                         help='by default consider the ids are just the order')
     parser.add_argument('--class_col', default='exam_class',
                         help='column with the age in csv file.')
-    parser.add_argument('--ids_col', default=None,
+    parser.add_argument('--ids_col', default='id_exam',
                         help='column with the ids in csv file.')
     parser.add_argument('--cuda', action='store_false',
                         help='use cuda for computations. (default: True)')
@@ -199,10 +199,18 @@ if __name__ == "__main__":
 
     print(len(af_classes))
     mask_classes = (df[args.class_col] != 0).to_numpy()
-    valid_mask_0 = np.arange(len(df)) <= args.n_valid	# Choose a small chunk of data for testing
-    train_mask_0 = (~valid_mask_0) & (np.arange(len(df)) < 10000)
 
-    valid_mask = valid_mask_0 & mask_classes
+    # For testing the code: # Choose a small chunk of data for validation and training
+    '''
+    valid_mask_0 = np.arange(len(df)) < args.n_valid
+    train_mask_0 = (~valid_mask_0) & (np.arange(len(df)) <= 10000)
+    '''
+
+    # using CODE-15% dataset, --n_valid=105000
+    valid_mask_0 = (np.arange(len(df)) >= 70000) & (np.arange(len(df)) < args.n_valid)
+    train_mask_0 = np.arange(len(df)) >= args.n_valid
+
+    valid_mask = valid_mask_0 & mask_classes 
     train_mask = train_mask_0 & mask_classes
 
     print(len(train_mask))
