@@ -26,19 +26,17 @@ def crossentropy(G, Y):
     return -(Y_onehot * G.log()).sum()
 
 
-def compute_weights(ages, max_weight=np.inf):
-    _, inverse, counts = np.unique(ages, return_inverse=True, return_counts=True)
-    weights = 1 / counts[inverse]
+def compute_weights(classes):
+    _, inverse, counts = np.unique(classes, return_inverse=True, return_counts=True)
+    weights = 1 / counts
     normalized_weights = weights / sum(weights)
-    w = len(ages) * normalized_weights
-    # Truncate weights to a maximum
-    if max_weight < np.inf:
-        w = np.minimum(w, max_weight)
-        w = len(ages) * w / sum(w)
+    w = normalized_weights / min(normalized_weights)
+    w = w * np.array([1, 5, 200])
+
     return w
 
 
-def train(ep, dataload):
+def train(ep, dataload, weights):
     model.train()
     total_loss = 0
     n_entries = 0
@@ -56,7 +54,7 @@ def train(ep, dataload):
         #loss = compute_loss(ages, pred_ages, weights)
         pred_classes = pred_classes.type(torch.DoubleTensor)  # float type raises error
         af_classes = (af_classes - 1).type(torch.LongTensor)  # The targets should be in the range [0, 2], Pytorch requires
-        loss = F.cross_entropy(pred_classes, af_classes)
+        loss = F.cross_entropy(pred_classes, af_classes, weight=weights)
         # Backward pass
         loss.backward()
         # Optimize
@@ -72,7 +70,7 @@ def train(ep, dataload):
     return total_loss / n_entries
 
 
-def eval(ep, dataload):
+def eval(ep, dataload, weights):
     model.eval()
     total_loss = 0
     #total_diff = 0
@@ -92,7 +90,9 @@ def eval(ep, dataload):
             #loss = compute_loss(ages, pred_ages, weights)
             pred_classes = pred_classes.type(torch.DoubleTensor)  # float type raises error
             af_classes = (af_classes - 1).type(torch.LongTensor)
-            loss = F.cross_entropy(pred_classes, af_classes)
+            loss = F.cross_entropy(pred_classes, af_classes, weight=weights)
+            #print(loss)
+            #a = b
             # Update outputs
             bs = len(traces)
             # Update ids
@@ -197,7 +197,7 @@ if __name__ == "__main__":
     #valid_mask = np.arange(len(df)) <= args.n_valid
     #train_mask = ~valid_mask
 
-    print(len(af_classes))
+    print("Number of samples: ", len(af_classes))
     mask_classes = (df[args.class_col] != 0).to_numpy()
 
     # For testing the code: # Choose a small chunk of data for validation and training
@@ -213,9 +213,19 @@ if __name__ == "__main__":
     valid_mask = valid_mask_0 & mask_classes 
     train_mask = train_mask_0 & mask_classes
 
-    print(len(train_mask))
+    # Get an array of class values for training
+    af_classes_train = af_classes[train_mask].to_numpy()
+    print(af_classes_train[:20], "Number of traces used for training: ", len(af_classes_train))
+
+    # Compute rescaling weights
+    weights = compute_weights(af_classes_train)
+    weights = torch.tensor(weights)
+    print("Weights values: ", weights)
+    #a=b
+    print("Number of samples", len(train_mask))
     # weights
     # weights = compute_weights(ages)
+
     # Dataloader
     train_loader = BatchDataloader(traces, af_classes, bs=args.batch_size, mask=train_mask)
     valid_loader = BatchDataloader(traces, af_classes, bs=args.batch_size, mask=valid_mask)
@@ -248,8 +258,8 @@ if __name__ == "__main__":
     history = pd.DataFrame(columns=['epoch', 'train_loss', 'valid_loss', 'lr',
                                     'weighted_rmse', 'weighted_mae', 'rmse', 'mse'])
     for ep in range(start_epoch, args.epochs):
-        train_loss = train(ep, train_loader)
-        valid_loss = eval(ep, valid_loader)
+        train_loss = train(ep, train_loader, weights)
+        valid_loss = eval(ep, valid_loader, weights)
 
         # Save best model
         if valid_loss < best_loss:

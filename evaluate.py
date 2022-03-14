@@ -78,7 +78,7 @@ if __name__ == "__main__":
     n_total, n_samples, n_leads = traces.shape
     n_batches = int(np.ceil(n_total/args.batch_size))
     # Compute gradients
-    predicted_class = np.zeros((n_total,))
+    predicted_class = np.zeros((n_total,N_CLASSES + 1))  # For class probabilities and predicted class
     end = 0
     for i in tqdm.tqdm(range(n_batches)):
         start = end
@@ -88,12 +88,17 @@ if __name__ == "__main__":
             x = x.to(device, dtype=torch.float32)
             y_pred = model(x)
             y_pred = F.softmax(y_pred, dim=1)
+            y_prob = y_pred
             y_pred = y_pred.argmax(dim=1) + 1
-        predicted_class[start:end] = y_pred.detach().cpu().numpy().flatten()
-    predicted_class = predicted_class.astype(int)
+        predicted_class[start:end,:N_CLASSES] = y_prob.detach().cpu().numpy()
+        predicted_class[start:end, -1] = y_pred.detach().cpu().numpy()        #.astype(int)
+    #predicted_class = predicted_class.astype(int)
 
     # Save predictions
-    df = pd.DataFrame({'exam_ids': ids, 'predicted_class': predicted_class})
+    df = pd.DataFrame({'exam_ids': ids, 'predicted_class': predicted_class[:,-1],
+                       'prob_class1' : predicted_class[:,0],
+                       'prob_class2' : predicted_class[:,1],
+                       'prob_class3' : predicted_class[:,2] })
     df = df.set_index('exam_ids', drop=False)
     df.to_csv(args.output)
 
@@ -103,6 +108,6 @@ if __name__ == "__main__":
         h5ids = ff[args.ids_dset]
         df2 = df2.reindex(h5ids, fill_value=False, copy=True) # Keep ids that are in h5 file
         y_true = np.array(df2[args.class_col])
-        accuracy = get_accuracy(predicted_class, y_true)
+        accuracy = get_accuracy(predicted_class[:,-1], y_true)
         print(f'The accuracy is: {accuracy * 100:.3f}%.')
         #print('The accuracy is: {:6.3f}%.'.format(accuracy * 100))
