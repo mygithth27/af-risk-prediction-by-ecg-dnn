@@ -8,6 +8,10 @@ from dataloader import BatchDataloader
 import torch.optim as optim
 import numpy as np
 
+from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import average_precision_score
+from sklearn.preprocessing import label_binarize
+
 
 def compute_loss(ages, pred_ages, weights):
     diff = torch.abs(ages.flatten() - pred_ages.flatten())
@@ -25,18 +29,43 @@ def crossentropy(G, Y):
     #return -(Y_onehot * G.log()).sum(dim = 1).sum(dim=0)
     return -(Y_onehot * G.log()).sum()
 
-
 def compute_weights(classes):
     _, inverse, counts = np.unique(classes, return_inverse=True, return_counts=True)
     weights = 1 / counts
     normalized_weights = weights / sum(weights)
     w = normalized_weights / min(normalized_weights)
-    w = w * np.array([1, 5, 200])
+    #w = w * np.array([1, 5, 200])
 
     return w
 
+def compute_metrics(all_logits, all_labels):
+    """Compute ROC_AUC and Average Precision after evaluation of trained model, per epoch."""
+    metrics = []
+    fpr = {}
+    tpr = {}
+    thresh = {}
+    auc_scores = []
+    #ap_scores = []
+    n_classes = all_logits.size(1)
+    true_onehot = label_binarize(all_labels, classes=[1, 2, 3])
+    average_precision = []
 
-def train(ep, dataload, weights):
+    # Compute ROC scores
+    for i in range(n_classes):
+        fpr[i], tpr[i], thresh[i] = roc_curve(all_labels, all_logits[:,i], pos_label=i+1)
+        auc_scores.append(auc(fpr[i], tpr[i]))
+
+    # Compute Average Precision Scores
+    for i in range(n_classes):
+        average_precision.append(average_precision_score(true_onehot[:, i], all_logits[:, i], average='micro'))
+
+    metrics.append(auc_scores)
+    metrics.append(average_precision)
+
+    return metrics
+
+
+def train(ep, dataload, weights=None):
     model.train()
     total_loss = 0
     n_entries = 0
@@ -54,7 +83,12 @@ def train(ep, dataload, weights):
         #loss = compute_loss(ages, pred_ages, weights)
         pred_classes = pred_classes.type(torch.DoubleTensor)  # float type raises error
         af_classes = (af_classes - 1).type(torch.LongTensor)  # The targets should be in the range [0, 2], Pytorch requires
-        loss = F.cross_entropy(pred_classes, af_classes, weight=weights)
+        pred_classes, af_classes = pred_classes.to(device), af_classes.to(device)
+        if weights != None:
+            weights = weights.to(device)
+            loss = F.cross_entropy(pred_classes, af_classes, weight=weights)
+        else:
+            loss = F.cross_entropy(pred_classes, af_classes)
         # Backward pass
         loss.backward()
         # Optimize
@@ -75,6 +109,8 @@ def eval(ep, dataload, weights):
     total_loss = 0
     #total_diff = 0
     n_entries = 0
+    all_logits = []
+    all_labels = []
     eval_desc = "Epoch {:2d}: valid - Loss: {:.6f}"
     eval_bar = tqdm(initial=0, leave=True, total=len(dataload),
                     desc=eval_desc.format(ep, 0, 0), position=0)
@@ -87,12 +123,21 @@ def eval(ep, dataload, weights):
         with torch.no_grad():
             # Forward pass
             pred_classes = model(traces)
+            # append
+            all_logits.append(pred_classes.detach().cpu())
+            all_labels.append(af_classes.detach().cpu())
             #loss = compute_loss(ages, pred_ages, weights)
             pred_classes = pred_classes.type(torch.DoubleTensor)  # float type raises error
             af_classes = (af_classes - 1).type(torch.LongTensor)
-            loss = F.cross_entropy(pred_classes, af_classes, weight=weights)
+            pred_classes,af_classes = pred_classes.to(device), af_classes.to(device)
+            if weights != None:
+                weights = weights.to(device)
+                loss = F.cross_entropy(pred_classes, af_classes, weight=weights)
+            else:
+                loss = F.cross_entropy(pred_classes, af_classes)
             #print(loss)
             #a = b
+
             # Update outputs
             bs = len(traces)
             # Update ids
@@ -103,7 +148,14 @@ def eval(ep, dataload, weights):
             eval_bar.desc = eval_desc.format(ep, total_loss / n_entries)
             eval_bar.update(1)
     eval_bar.close()
-    return total_loss / n_entries
+    # compute metrics
+    metrics = compute_metrics(torch.cat(all_logits), torch.cat(all_labels))
+    # mean validation loss
+    mean_valid_loss = total_loss / n_entries
+    #print("ROC_AUC values: ", metrics[0])
+    #print("Average precision values: ", metrics[1])
+
+    return mean_valid_loss, metrics
 
 
 if __name__ == "__main__":
@@ -159,6 +211,8 @@ if __name__ == "__main__":
     parser.add_argument('--n_valid', type=int, default=2500,
                         help='the first `n_valid` exams in the hdf will be for validation.'
                              'The rest is for training')
+    parser.add_argument('--use_weights', default= False,
+                        help='Whether to use weights or not while training.')
     parser.add_argument('path_to_traces',
                         help='path to file containing ECG traces')
     parser.add_argument('path_to_csv',
@@ -218,9 +272,12 @@ if __name__ == "__main__":
     print(af_classes_train[:20], "Number of traces used for training: ", len(af_classes_train))
 
     # Compute rescaling weights
-    weights = compute_weights(af_classes_train)
-    weights = torch.tensor(weights)
-    print("Weights values: ", weights)
+    if args.use_weights:
+        weights = compute_weights(af_classes_train)
+        weights = torch.tensor(weights)
+        print("Weights values: ", weights)
+    else:
+        weights = None
     #a=b
     print("Number of samples", len(train_mask))
     # weights
@@ -256,10 +313,11 @@ if __name__ == "__main__":
     start_epoch = 0
     best_loss = np.Inf
     history = pd.DataFrame(columns=['epoch', 'train_loss', 'valid_loss', 'lr',
-                                    'weighted_rmse', 'weighted_mae', 'rmse', 'mse'])
+                                    'AUC_class1', 'AUC_class2', 'AUC_class3',
+                                    'AP_class1', 'AP_class2', 'AP_class3'])
     for ep in range(start_epoch, args.epochs):
         train_loss = train(ep, train_loader, weights)
-        valid_loss = eval(ep, valid_loader, weights)
+        valid_loss, metrics = eval(ep, valid_loader, weights)
 
         # Save best model
         if valid_loss < best_loss:
@@ -282,12 +340,16 @@ if __name__ == "__main__":
                   '\tValid Loss {:.6f} \tLearning Rate {:.7f}\t'
                  .format(ep, train_loss, valid_loss, learning_rate))
         # Save history
-        history = history.append({"epoch": ep, "train_loss": train_loss,
-                                  "valid_loss": valid_loss, "lr": learning_rate},
+        history = history.append({"epoch": ep, "train_loss": train_loss, "valid_loss": valid_loss,
+                                  "lr": learning_rate, "AUC_class1": metrics[0][0],
+                                  "AUC_class2": metrics[0][1],"AUC_class3": metrics[0][2],
+                                  "AP_class1": metrics[1][0], "AP_class2": metrics[1][1],
+                                  "AP_class3": metrics[1][2]},
                                   ignore_index=True)
         history.to_csv(os.path.join(folder, 'history.csv'), index=False)
         # Update learning rate
         scheduler.step(valid_loss)
+
     tqdm.write("Done!")
 
 
