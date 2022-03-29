@@ -9,6 +9,7 @@ import torch.optim as optim
 import numpy as np
 
 from sklearn.metrics import roc_curve, auc
+from sklearn.metrics import roc_auc_score
 from sklearn.metrics import average_precision_score
 from sklearn.preprocessing import label_binarize
 
@@ -48,9 +49,10 @@ def compute_metrics(all_logits, all_labels):
     #ap_scores = []
     n_classes = all_logits.size(1)
     true_onehot = label_binarize(all_labels, classes=[1, 2, 3])
+    all_logits = F.softmax(all_logits, dim=1)
     average_precision = []
 
-    # Compute ROC scores
+    # Compute AUC scores (one vs rest)
     for i in range(n_classes):
         fpr[i], tpr[i], thresh[i] = roc_curve(all_labels, all_logits[:,i], pos_label=i+1)
         auc_scores.append(auc(fpr[i], tpr[i]))
@@ -59,8 +61,17 @@ def compute_metrics(all_logits, all_labels):
     for i in range(n_classes):
         average_precision.append(average_precision_score(true_onehot[:, i], all_logits[:, i], average='micro'))
 
+    # Compute the AUC score of class 3 VS class 1
+    prob_sum = all_logits[:, 2] + all_logits[:, 0]
+    prob_class3_norm = all_logits[:, 2] / prob_sum
+    prob_class1_norm = all_logits[:, 0] / prob_sum
+    three_vs_one_auc_score = roc_auc_score(true_onehot[:, 2], prob_class3_norm, average=None)
+    one_vs_three_auc_score = roc_auc_score(true_onehot[:, 0], prob_class1_norm, average=None)
+
+
     metrics.append(auc_scores)
     metrics.append(average_precision)
+    metrics.append([three_vs_one_auc_score, one_vs_three_auc_score])
 
     return metrics
 
@@ -85,7 +96,7 @@ def train(ep, dataload, weights=None):
         af_classes = (af_classes - 1).type(torch.LongTensor)  # The targets should be in the range [0, 2], Pytorch requires
         pred_classes, af_classes = pred_classes.to(device), af_classes.to(device)
         if weights != None:
-            weights = weights.to(device)
+            #weights = weights.to(device)
             loss = F.cross_entropy(pred_classes, af_classes, weight=weights)
         else:
             loss = F.cross_entropy(pred_classes, af_classes)
@@ -131,7 +142,7 @@ def eval(ep, dataload, weights):
             af_classes = (af_classes - 1).type(torch.LongTensor)
             pred_classes,af_classes = pred_classes.to(device), af_classes.to(device)
             if weights != None:
-                weights = weights.to(device)
+                #weights = weights.to(device)
                 loss = F.cross_entropy(pred_classes, af_classes, weight=weights)
             else:
                 loss = F.cross_entropy(pred_classes, af_classes)
@@ -203,12 +214,14 @@ if __name__ == "__main__":
     parser.add_argument('--ids_dset', default='id_exam',
                         help='by default consider the ids are just the order')
     parser.add_argument('--class_col', default='exam_class',
-                        help='column with the age in csv file.')
+                        help='column with the exam classes in csv file.')
+    parser.add_argument('--split_col', default='split',
+                        help='column with train-test split info in csv file.')
     parser.add_argument('--ids_col', default='id_exam',
                         help='column with the ids in csv file.')
     parser.add_argument('--cuda', action='store_false',
                         help='use cuda for computations. (default: True)')
-    parser.add_argument('--n_valid', type=int, default=2500,
+    parser.add_argument('--n_valid', type=int, default=-1,
                         help='the first `n_valid` exams in the hdf will be for validation.'
                              'The rest is for training')
     parser.add_argument('--use_weights', default= False,
@@ -252,7 +265,6 @@ if __name__ == "__main__":
     #train_mask = ~valid_mask
 
     print("Number of samples: ", len(af_classes))
-    mask_classes = (df[args.class_col] != 0).to_numpy()
 
     # For testing the code: # Choose a small chunk of data for validation and training
     '''
@@ -260,12 +272,31 @@ if __name__ == "__main__":
     train_mask_0 = (~valid_mask_0) & (np.arange(len(df)) <= 10000)
     '''
 
+
+    # For training code on full dataset "traces100pc" , can select few traces with n_valid
+    # Can also use traces15pc without class 0 (pre-selected).
+
+    if args.n_valid > 0:
+        mask_chunk = np.arange(len(df)) < args.n_valid
+    else:
+        mask_chunk = np.arange(len(df)) < len(df)  # Full dataset
+
+    train_mask_0 = (df[args.split_col] == "train").to_numpy()
+    valid_mask_0 = (df[args.split_col] == "valid").to_numpy()
+
+    train_mask = train_mask_0 & mask_chunk
+    valid_mask = valid_mask_0 & mask_chunk
+
+
     # using CODE-15% dataset, --n_valid=105000
+    '''
+    mask_classes = (df[args.class_col] != 0).to_numpy()
     valid_mask_0 = (np.arange(len(df)) >= 70000) & (np.arange(len(df)) < args.n_valid)
     train_mask_0 = np.arange(len(df)) >= args.n_valid
 
-    valid_mask = valid_mask_0 & mask_classes 
+    valid_mask = valid_mask_0 & mask_classes
     train_mask = train_mask_0 & mask_classes
+    '''
 
     # Get an array of class values for training
     af_classes_train = af_classes[train_mask].to_numpy()
@@ -314,7 +345,8 @@ if __name__ == "__main__":
     best_loss = np.Inf
     history = pd.DataFrame(columns=['epoch', 'train_loss', 'valid_loss', 'lr',
                                     'AUC_class1', 'AUC_class2', 'AUC_class3',
-                                    'AP_class1', 'AP_class2', 'AP_class3'])
+                                    'AP_class1', 'AP_class2', 'AP_class3',
+                                    'AUC_3to1', 'AUC_1to3'])
     for ep in range(start_epoch, args.epochs):
         train_loss = train(ep, train_loader, weights)
         valid_loss, metrics = eval(ep, valid_loader, weights)
@@ -344,12 +376,12 @@ if __name__ == "__main__":
                                   "lr": learning_rate, "AUC_class1": metrics[0][0],
                                   "AUC_class2": metrics[0][1],"AUC_class3": metrics[0][2],
                                   "AP_class1": metrics[1][0], "AP_class2": metrics[1][1],
-                                  "AP_class3": metrics[1][2]},
-                                  ignore_index=True)
+                                  "AP_class3": metrics[1][2], "AUC_3to1": metrics[2][0],
+                                  "AUC_1to3": metrics[2][1]}, ignore_index=True)
+
         history.to_csv(os.path.join(folder, 'history.csv'), index=False)
         # Update learning rate
         scheduler.step(valid_loss)
 
     tqdm.write("Done!")
-
 
