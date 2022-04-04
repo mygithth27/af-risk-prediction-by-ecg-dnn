@@ -61,17 +61,23 @@ def compute_metrics(all_logits, all_labels):
     for i in range(n_classes):
         average_precision.append(average_precision_score(true_onehot[:, i], all_logits[:, i], average='micro'))
 
-    # Compute the AUC score of class 3 VS class 1
-    prob_sum = all_logits[:, 2] + all_logits[:, 0]
-    prob_class3_norm = all_logits[:, 2] / prob_sum
-    prob_class1_norm = all_logits[:, 0] / prob_sum
-    three_vs_one_auc_score = roc_auc_score(true_onehot[:, 2], prob_class3_norm, average=None)
-    one_vs_three_auc_score = roc_auc_score(true_onehot[:, 0], prob_class1_norm, average=None)
+    # Removing samples belonging to class 2
+    three_one_mask = all_labels != 2
+    three_one_logits = all_logits[three_one_mask]
+    three_one_onehot = true_onehot[three_one_mask]
 
+    # Compute the AUC score of class 3 VS class 1
+    prob_sum = three_one_logits[:, 2] + three_one_logits[:, 0]
+    prob_class3_norm = three_one_logits[:, 2] / prob_sum
+    #prob_class1_norm = three_one_logits[:, 0] / prob_sum
+    three_vs_one_auc_score = roc_auc_score(three_one_onehot[:, 2], prob_class3_norm, average=None)
+
+    # Compute Average Precision Score of class 3 VS class 1
+    three_vs_one_ap_score = average_precision_score(three_one_onehot[:, 2], prob_class3_norm, average='micro')
 
     metrics.append(auc_scores)
     metrics.append(average_precision)
-    metrics.append([three_vs_one_auc_score, one_vs_three_auc_score])
+    metrics.append([three_vs_one_auc_score, three_vs_one_ap_score])
 
     return metrics
 
@@ -203,7 +209,7 @@ if __name__ == "__main__":
                         help='filter size in resnet layers (default: [64, 128, 196, 256, 320]).')
     parser.add_argument('--net_seq_lengh', type=int, nargs='+', default=[4096, 1024, 256, 64, 16],
                         help='number of samples per resnet layer (default: [4096, 1024, 256, 64, 16]).')
-    parser.add_argument('--dropout_rate', type=float, default=0.8,
+    parser.add_argument('--dropout_rate', type=float, default=0.5,
                         help='dropout rate (default: 0.8).')
     parser.add_argument('--kernel_size', type=int, default=17,
                         help='kernel size in convolutional layers (default: 17).')
@@ -301,6 +307,8 @@ if __name__ == "__main__":
     # Get an array of class values for training
     af_classes_train = af_classes[train_mask].to_numpy()
     print(af_classes_train[:20], "Number of traces used for training: ", len(af_classes_train))
+    af_classes_valid = af_classes[valid_mask].to_numpy()
+    print(af_classes_valid[:20], "Number of traces used for validation: ", len(af_classes_valid))
 
     # Compute rescaling weights
     if args.use_weights:
@@ -331,7 +339,7 @@ if __name__ == "__main__":
     tqdm.write("Done!")
 
     tqdm.write("Define optimizer...")
-    optimizer = optim.Adam(model.parameters(), args.lr)
+    optimizer = optim.Adam(model.parameters(), args.lr, weight_decay=5e-4)
     tqdm.write("Done!")
 
     tqdm.write("Define scheduler...")
@@ -346,7 +354,7 @@ if __name__ == "__main__":
     history = pd.DataFrame(columns=['epoch', 'train_loss', 'valid_loss', 'lr',
                                     'AUC_class1', 'AUC_class2', 'AUC_class3',
                                     'AP_class1', 'AP_class2', 'AP_class3',
-                                    'AUC_3to1', 'AUC_1to3'])
+                                    'AUC_3to1', 'AP_3to1'])
     for ep in range(start_epoch, args.epochs):
         train_loss = train(ep, train_loader, weights)
         valid_loss, metrics = eval(ep, valid_loader, weights)
@@ -377,7 +385,7 @@ if __name__ == "__main__":
                                   "AUC_class2": metrics[0][1],"AUC_class3": metrics[0][2],
                                   "AP_class1": metrics[1][0], "AP_class2": metrics[1][1],
                                   "AP_class3": metrics[1][2], "AUC_3to1": metrics[2][0],
-                                  "AUC_1to3": metrics[2][1]}, ignore_index=True)
+                                  "AP_3to1": metrics[2][1]}, ignore_index=True)
 
         history.to_csv(os.path.join(folder, 'history.csv'), index=False)
         # Update learning rate

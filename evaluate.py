@@ -125,12 +125,19 @@ if __name__ == "__main__":
             predicted_class[start:end,:N_CLASSES] = y_prob.detach().cpu().numpy()
             predicted_class[start:end, -1] = y_pred.detach().cpu().numpy()
 
+        # Add normalized probabilities of classes 3 and 1
+        prob_sum = predicted_class[:,0] + predicted_class[:,2]
+        prob_class3_norm = predicted_class[:,2] / prob_sum
+        prob_class1_norm = predicted_class[:,0] / prob_sum
+
         # Save predictions
         test_ids = ids[test_mask]
         df = pd.DataFrame({'exam_ids': test_ids, 'predicted_class': predicted_class[:,-1],
                            'prob_class1' : predicted_class[:,0],
                            'prob_class2' : predicted_class[:,1],
-                           'prob_class3' : predicted_class[:,2] })
+                           'prob_class3' : predicted_class[:,2],
+                           'prob_class1_norm' : prob_class1_norm,
+                           'prob_class3_norm' : prob_class3_norm })
         df = df.set_index('exam_ids', drop=False)
         df.to_csv(args.output)
 
@@ -162,13 +169,19 @@ if __name__ == "__main__":
                 y_pred = y_pred.argmax(dim=1) + 1
             predicted_class[start:end,:N_CLASSES] = y_prob.detach().cpu().numpy()
             predicted_class[start:end, -1] = y_pred.detach().cpu().numpy()        #.astype(int)
-        #predicted_class = predicted_class.astype(int)
+
+        # Add normalized probabilities of classes 3 and 1
+        prob_sum = predicted_class[:,0] + predicted_class[:,2]
+        prob_class3_norm = predicted_class[:,2] / prob_sum
+        prob_class1_norm = predicted_class[:,0] / prob_sum
 
         # Save predictions
         df = pd.DataFrame({'exam_ids': ids, 'predicted_class': predicted_class[:,-1],
                            'prob_class1' : predicted_class[:,0],
                            'prob_class2' : predicted_class[:,1],
-                           'prob_class3' : predicted_class[:,2] })
+                           'prob_class3' : predicted_class[:,2],
+                           'prob_class1_norm' : prob_class1_norm,
+                           'prob_class3_norm' : prob_class3_norm })
         df = df.set_index('exam_ids', drop=False)
         df.to_csv(args.output)
 
