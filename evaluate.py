@@ -20,7 +20,6 @@ def get_accuracy(Y_hat, Y):
     return (Y_hat == Y).mean()
 
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser( description='Evaluate AF class prediction model.', add_help=False)
     parser.add_argument('mdl', type=str,
@@ -81,8 +80,6 @@ if __name__ == "__main__":
     else:
         ids = range(n_total)
 
-    #predicted_class = np.zeros((n_total,))
-
     # Evaluate on test data
     model.eval()
 
@@ -102,6 +99,7 @@ if __name__ == "__main__":
         else:
             mask_chunk = np.arange(len(exam_info_df)) < len(exam_info_df)  # Full dataset
 
+        #test_mask_0 = (exam_info_df[args.split_col] == "valid").to_numpy() # Using validation dataset (for threshold)
         test_mask_0 = (exam_info_df[args.split_col] == "test").to_numpy()
         test_mask = test_mask_0 & mask_chunk
         n_total = sum(test_mask) #total number of samples used for testing
@@ -154,7 +152,7 @@ if __name__ == "__main__":
         # Get dimension
         n_total, n_samples, n_leads = traces.shape
         n_batches = int(np.ceil(n_total/args.batch_size))
-        # Compute gradients
+
         predicted_class = np.zeros((n_total,N_CLASSES + 1))  # For class probabilities and predicted class
         end = 0
         for i in tqdm.tqdm(range(n_batches)):

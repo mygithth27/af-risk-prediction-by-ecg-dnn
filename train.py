@@ -26,8 +26,8 @@ def crossentropy(G, Y):
     n_classes = 3
     G = F.softmax(G, dim=1)
     Y_onehot = torch.eye(n_classes, device=device)[Y-1]
-
     #return -(Y_onehot * G.log()).sum(dim = 1).sum(dim=0)
+
     return -(Y_onehot * G.log()).sum()
 
 def compute_weights(classes):
@@ -46,7 +46,6 @@ def compute_metrics(all_logits, all_labels):
     tpr = {}
     thresh = {}
     auc_scores = []
-    #ap_scores = []
     n_classes = all_logits.size(1)
     true_onehot = label_binarize(all_labels, classes=[1, 2, 3])
     all_logits = F.softmax(all_logits, dim=1)
@@ -94,10 +93,8 @@ def train(ep, dataload, weights=None):
         traces, af_classes = traces.to(device), af_classes.to(device)
         # Reinitialize grad
         model.zero_grad()
-        # Send to device
         # Forward pass
         pred_classes = model(traces)
-        #loss = compute_loss(ages, pred_ages, weights)
         pred_classes = pred_classes.type(torch.DoubleTensor)  # float type raises error
         af_classes = (af_classes - 1).type(torch.LongTensor)  # The targets should be in the range [0, 2], Pytorch requires
         pred_classes, af_classes = pred_classes.to(device), af_classes.to(device)
@@ -118,13 +115,13 @@ def train(ep, dataload, weights=None):
         train_bar.desc = train_desc.format(ep, total_loss / n_entries)
         train_bar.update(1)
     train_bar.close()
+
     return total_loss / n_entries
 
 
 def eval(ep, dataload, weights):
     model.eval()
     total_loss = 0
-    #total_diff = 0
     n_entries = 0
     all_logits = []
     all_labels = []
@@ -133,9 +130,6 @@ def eval(ep, dataload, weights):
                     desc=eval_desc.format(ep, 0, 0), position=0)
     for traces, af_classes in dataload:
         traces = traces.transpose(1, 2)
-        #print(traces.shape)
-        #print(traces)
-        #a = b
         traces, af_classes = traces.to(device), af_classes.to(device)
         with torch.no_grad():
             # Forward pass
@@ -143,7 +137,6 @@ def eval(ep, dataload, weights):
             # append
             all_logits.append(pred_classes.detach().cpu())
             all_labels.append(af_classes.detach().cpu())
-            #loss = compute_loss(ages, pred_ages, weights)
             pred_classes = pred_classes.type(torch.DoubleTensor)  # float type raises error
             af_classes = (af_classes - 1).type(torch.LongTensor)
             pred_classes,af_classes = pred_classes.to(device), af_classes.to(device)
@@ -152,14 +145,10 @@ def eval(ep, dataload, weights):
                 loss = F.cross_entropy(pred_classes, af_classes, weight=weights)
             else:
                 loss = F.cross_entropy(pred_classes, af_classes)
-            #print(loss)
-            #a = b
-
             # Update outputs
             bs = len(traces)
             # Update ids
             total_loss += loss.detach().cpu().numpy()
-            #total_diff += diff_w.detach().cpu().numpy()
             n_entries += bs
             # Print result
             eval_bar.desc = eval_desc.format(ep, total_loss / n_entries)
@@ -169,8 +158,6 @@ def eval(ep, dataload, weights):
     metrics = compute_metrics(torch.cat(all_logits), torch.cat(all_labels))
     # mean validation loss
     mean_valid_loss = total_loss / n_entries
-    #print("ROC_AUC values: ", metrics[0])
-    #print("Average precision values: ", metrics[1])
 
     return mean_valid_loss, metrics
 
@@ -237,6 +224,7 @@ if __name__ == "__main__":
     parser.add_argument('path_to_csv',
                         help='path to csv file containing attributes.')
     args, unk = parser.parse_known_args()
+
     # Check for unknown options
     if unk:
         warn("Unknown arguments:" + str(unk) + ".")
@@ -257,14 +245,12 @@ if __name__ == "__main__":
     tqdm.write("Building data loaders...")
     # Get csv data
     df = pd.read_csv(args.path_to_csv, index_col=args.ids_col)
-    # 	ages = df[args.age_col]
     # Get h5 data
     f = h5py.File(args.path_to_traces, 'r')
     traces = f[args.traces_dset]
     if args.ids_dset:
         h5ids = f[args.ids_dset]
         df = df.reindex(h5ids, fill_value=False, copy=True)
-    #ages = df[args.age_col]
     af_classes = df[args.class_col]
     # Train/ val split
     #valid_mask = np.arange(len(df)) <= args.n_valid
@@ -309,6 +295,13 @@ if __name__ == "__main__":
     print(af_classes_train[:20], "Number of traces used for training: ", len(af_classes_train))
     af_classes_valid = af_classes[valid_mask].to_numpy()
     print(af_classes_valid[:20], "Number of traces used for validation: ", len(af_classes_valid))
+    # Getting class distribution in the train set
+    train_class1 = df.loc[(df[args.split_col]=='train') & (df[args.class_col]== 1)].shape[0]
+    train_class2 = df.loc[(df[args.split_col]=='train') & (df[args.class_col]== 2)].shape[0]
+    train_class3 = df.loc[(df[args.split_col]=='train') & (df[args.class_col]== 3)].shape[0]
+    print("Samples belonging to class 1 in the train set:", train_class1)
+    print("Samples belonging to class 2 in the train set:", train_class2)
+    print("Samples belonging to class 3 in the train set:", train_class3)
 
     # Compute rescaling weights
     if args.use_weights:
@@ -317,10 +310,8 @@ if __name__ == "__main__":
         print("Weights values: ", weights)
     else:
         weights = None
-    #a=b
+
     print("Number of samples", len(train_mask))
-    # weights
-    # weights = compute_weights(ages)
 
     # Dataloader
     train_loader = BatchDataloader(traces, af_classes, bs=args.batch_size, mask=train_mask)

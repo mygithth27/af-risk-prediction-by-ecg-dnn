@@ -99,13 +99,10 @@ def get_extended_dataframe(path_to_csv, min_deltatime, max_deltatime):
             n_patient = hash_patients[patient_ids[n]]
             time_to_last_exam[n] = date_last_exam[n_patient] - date[n]
             #time_to_last_exam[n] = (date_last_exam[n_patient] - date[n])/ np.timedelta64(1, 's')  # time in days
-    #print("Date: \n", date[100000:100100])
-    #print("time to last exam: \n", time_to_last_exam[100000:100100])
+
     # Convert to weeks
-    #time_to_last_exam = (np.array(time_to_last_exam, dtype=int) / ((1e9) * 60 * 60 * 24 * 7)).astype(int)
     time_to_last_exam = (time_to_last_exam / ((1e9) * 60 * 60 * 24 * 7)).astype(int)
-    #print("time to last exam: \n", time_to_last_exam[100000:100100])
-    #time_to_last_exam = np.array(time_to_last_exam, dtype=int) // 7 * 3600
+
     # Get class 1
     exam_class[(group_exam == 1) & (next_exam_id != -1)
                & (min_deltatime < time_to_last_exam) & (time_to_last_exam < max_deltatime)] = 1
@@ -121,9 +118,11 @@ def get_extended_dataframe(path_to_csv, min_deltatime, max_deltatime):
             n_patient = hash_patients[patient_ids[n]]
             time_to_first_appearance[n] = date_first_appearance[n_patient] - date[n]
             #time_to_first_appearance[n] = (date_first_appearance[n_patient] - date[n])/ np.timedelta64(1, 's')   # time in days
+
     # Convert to weeks
     time_to_first_appearance = (time_to_first_appearance / ((1e9) * 60 * 60 * 24 * 7)).astype(int)
     #time_to_first_appearance = np.array(time_to_first_appearance, dtype=int) // 7 * 3600
+
     # Get class 3
     exam_class[(group_exam == 3) & (count_appearances_exam < 1) &
                (min_deltatime < time_to_first_appearance) & (time_to_first_appearance < max_deltatime)] = 3
@@ -146,7 +145,7 @@ def get_extended_dataframe(path_to_csv, min_deltatime, max_deltatime):
     d = {'patient_ids': patients, 'group': group}   # Per unique and sorted patient Ids
     d.update({'not_in_class_{}'.format(c): patients_not_in_class[:, c] for c in range(N_CLASSES)})
     df_patient = pd.DataFrame(d)
-    
+
     print("Time to last exam:\n", time_to_last_exam[-100:])
     print("Time to first appearence:\n", time_to_first_appearance[-200:])
 
@@ -233,7 +232,7 @@ def get_patient_ids(df_patient, valid_split, test_split, seed=0):
     train_ids, valid_ids, test_ids = [], [], []
 
     in_all = [patients_g1_c1, patients_g3_c3]       # All-exams-normal patients and patients who develop later AF and in class 3
-    
+
     for p in in_all:
         length = len(p)
         valid_length = int(np.floor(valid_split * length))
@@ -251,7 +250,7 @@ def get_patient_ids(df_patient, valid_split, test_split, seed=0):
         train_ids += p[valid_length:]
         valid_ids += p[:valid_length]
 
-    return train_ids, valid_ids, test_ids           # Check overlap in test_ids and train_ids from g3
+    return train_ids, valid_ids, test_ids
 
 
 def get_ids(df, train_patient_ids, valid_patient_ids, test_patient_ids):
@@ -262,7 +261,7 @@ def get_ids(df, train_patient_ids, valid_patient_ids, test_patient_ids):
     ids = []
     for p_ids in patient_ids:
         ixs = df["id_patient"].isin(p_ids) & (df['exam_class'] != 0) & (df['group_exam'] != 0)  # index mask
-        
+
         #index_list = list(df.index[ixs])
         #index_mask = np.isin(df.index, index_list)
         ex_ids = list(df.loc[ixs, 'id_exam'])
@@ -303,7 +302,6 @@ if __name__ == "__main__":
                                                                                 args.test_split, seed=0)
     set1 = set(train_patient_ids) 
     common_elements = set1.intersection(test_patient_ids)
-    #print("Common p_ids train-test: {}".format(common_elements))
     print("test_patient ids: ", len(test_patient_ids))
     print("Common p_ids train-test: ", len(common_elements))
     
@@ -316,7 +314,7 @@ if __name__ == "__main__":
     train_exam_ids, valid_exam_ids, test_exam_ids = get_ids(exams_info, train_patient_ids,
                                                             valid_patient_ids, test_patient_ids)
         
-    set2 = set(train_exam_ids) 
+    set2 = set(train_exam_ids)
     common_ids = set2.intersection(test_exam_ids)
     #print("Common exam_ids train-test: {}".format(common_ids))
     print("test_exam ids: ", len(test_exam_ids))
@@ -351,7 +349,7 @@ if __name__ == "__main__":
         ax[0].set_xticklabels(['16 hours', '1 week', '3 months', '2 years', '20 years'], rotation=40)
         ax[0].set_title('time before first appearance (group 3)')
         #sns.distplot(exams_info['time_to_last_exam'], kde=False, norm_hist=False, bins=np.logspace(-1, 3, 10), ax=ax[1])
-        sns.histplot(data=exams_info['time_to_last_exam'], kde=False, bins=np.logspace(-1, 3, 10), ax=ax[1]) # 
+        sns.histplot(data=exams_info['time_to_last_exam'], kde=False, bins=np.logspace(-1, 3, 10), ax=ax[1])
         ax[1].set(xscale='log',)
         ax[1].set(xticks=[0.1, 1, 10, 100, 1000])
         ax[1].set_xticklabels(['16 hours', '1 week', '3 months', '2 years', '20 years'], rotation=40)
