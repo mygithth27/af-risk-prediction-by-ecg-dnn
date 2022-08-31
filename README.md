@@ -1,71 +1,52 @@
-# Predicting age from the electrocardiogram and its usage as a mortality predictor
+# Risk Prediction of Atrial Fibrillation Using the 12-lead Electrocardiogram and Deep Neural Networks
 
-Scripts and modules for training and testing deep neural networks for ECG automatic classification.
-Companion code to the paper "Deep neural network-estimated electrocardiographic age as a mortality predictor".
-https://www.nature.com/articles/s41467-021-25351-7.
+Scripts and modules for training and testing deep neural networks for ECG automatic classification. In addition, codes for developing survival models in order to make risk analysis are provided.
+Companion code to the paper "Coming soon".
+link.
 
 Citation:
 ```
-Lima, E.M., Ribeiro, A.H., Paixão, G.M.M. et al. Deep neural network-estimated electrocardiographic age as a 
-mortality predictor. Nat Commun 12, 5117 (2021). https://doi.org/10.1038/s41467-021-25351-7. 
+ 
 ```
 
 Bibtex:
 ```bibtex
-@article{lima_deep_2021,
-  title = {Deep Neural Network Estimated Electrocardiographic-Age as a Mortality Predictor},
-  author = {Lima, Emilly M. and Ribeiro, Ant{\^o}nio H. and Paix{\~a}o, Gabriela MM and Ribeiro, Manoel Horta and Filho, Marcelo M. Pinto and Gomes, Paulo R. and Oliveira, Derick M. and Sabino, Ester C. and Duncan, Bruce B. and Giatti, Luana and Barreto, Sandhi M. and Meira, Wagner and Sch{\"o}n, Thomas B. and Ribeiro, Antonio Luiz P.},
-  year = {2021},
-  journal = {Nature Communications},
-  volume = {12},
-  doi = {10.1038/s41467-021-25351-7},
-  annotation = {medRxiv doi: 10.1101/2021.02.19.21251232},}
+
 }
 ```
-**OBS:** *The three first authors: Emilly M. Lima, Antônio H. Ribeiro, Gabriela M. M. Paixão contributed equally.*
+**OBS:** *The .*
 
 
 
 # Data
 
-Three different cohorts are used in the study:
+This project used one cohort, the CODE dataset, for model development and testing. The CODE dataset consisted of 2, 322, 465 12-lead ECG records from 1, 558, 748 different patients. Among the records, only a total of 691, 645 exams collected from 415, 970 unique patients were selected and used for training and testing. The train-test split was as follows:
+   - 30% of the selected dataset were used for model testing. 
+   - The rest of the selected dataset were used for model development: 60% for model training and 10% for validation of the DNN model during training.
 
-1. The `CODE` study cohort, with n=1,558,415 patients was used for training and testing:
-   - exams from 15% of the patients in this cohort were used for testing. This sub-cohort is refered as `CODE-15%`. 
-     The `CODE-15\%` dataset is openly available: [doi: 10.5281/zenodo.4916206 ](https://doi.org/10.5281/zenodo.4916206).
-   - the remainign 85%  of the patients were used for developing the neural network model. 
-     The full CODE dataset that was used for training is available upon 
-     request for research purposes: [doi: 10.17044/scilifelab.15169716](https://doi.org/10.17044/scilifelab.15169716)
-2. The `SaMi-Trop` cohort, with n=1,631 patients, is used for external validation.
-    - The dataset is openly available: [doi: 10.5281/zenodo.4905618](https://doi.org/10.5281/zenodo.4905618)
-3. The `ELSA-Brasil` cohort with n=14,236 patients, is also used for external validation.
-    - Request to the ELSA-Brasil cohort should be forward to the ELSA-Brasil Steering Committee.
+The full CODE dataset is available upon request for research purposes: doi: 10.17044/scilifelab.15169716.
+For the purposes of testing the developed model in this study, a CODE-15\% dataset is openly available: doi: 10.5281/zenodo.4916206 .
+
 
 # Training and evaluation
 
-The code training and evaluation is implemented in Python, contains
-  the code for training and evaluating the age prediction model.
+All the models developed during this study were implemented in Python. The codes in train.py and evaluate.py were applied for training and evaluating the DNN model for the purpose of AF risk prediction. Both files use the codes in resnet.py and dataloader.py modules. The survival_model.ipynb file contains the codes for survival modelling.
 
 ## Model
 
-The model used in the paper is a residual neural. The neural network architecture implementation 
-in pytorch is available in `resnet.py`. It follows closely 
-[this architecture](https://www.nature.com/articles/s41467-020-15432-4), except that there is no sigmoid at the last layer.
+The model developed in this project is a deep residual neural network. The neural network architecture implementation in pytorch is available in resnet.py. It follows closely
+[this architecture](https://www.nature.com/articles/s41467-020-15432-4), except that there is five residual blocks and a softmax at the last layer.
 
 ![resnet](https://media.springernature.com/full/springer-static/image/art%3A10.1038%2Fs41467-020-15432-4/MediaObjects/41467_2020_15432_Fig3_HTML.png?as=webp)
 
 The model can be trained using the script `train.py`. Alternatively, 
-pre-trained weighs trained on the code dataset for the model described in the paper 
-is available in [doi.org/10.5281/zenodo.4892365](https://doi.org/10.5281/zenodo.4892365)
-in the following dropbox mirror
-[here](https://www.dropbox.com/s/thvqwaryeo8uemo/model.zip?dl=0).
+pre-trained weighs trained on selected data from the CODE dataset for the model development are available at [doi.org/10.5281/zenodo.7038218](https://doi.org/10.5281/zenodo.7038218) .
 Using the command line, the weights can be downloaded using:
 ```
-wget https://www.dropbox.com/s/thvqwaryeo8uemo/model.zip?dl=0 -O model.zip
-unzip model.zip
+
 ```
 - model input: `shape = (N, 12, 4096)`. The input tensor should contain the 4096 points of the ECG tracings sampled at 400Hz (i.e., a signal of approximately 10 seconds). Both in the training and in the test set, when the signal was not long enough, we filled the signal with zeros, so 4096 points were attained. The last dimension of the tensor contains points of the 12 different leads. The leads are ordered in the following order: {DI, DII, DIII, AVR, AVL, AVF, V1, V2, V3, V4, V5, V6}. All signal are represented as 32 bits floating point numbers at the scale 1e-4V: so if the signal is in V it should be multiplied by 1000 before feeding it to the neural network model.
-- model output: `shape = (N, 1) `. With the entry being the predicted age from the ECG.
+- model output: `shape = (N, 3) `. The output corresponds to class probabilities for class 1 (No AF and without risk), class 2 (AF condition) and class 3 (No AF but with impending risk).
 
 ## Requirements
 
@@ -97,15 +78,19 @@ $ python evaluate.py PATH_TO_MODEL PATH_TO_HDF5_ECG_TRACINGS --output PATH_TO_OU
 - ``resnet.py``: Auxiliary module that defines the architecture of the deep neural network.
 
 
-- ``formulate_problem.py``: Script that separate patients into training, validation and 
+- ``af_prediction_formulation.py``: Script that separate patients into training, validation and test sets.
 ```bash
-$ python predict.py PATH_TO_CSV 
+$ python af_prediction_formulation.py PATH_TO_CSV 
 ```
 
-- ``plot_learning_curves.py``: Auxiliary script that plots learning curve of the model.
+- ``history_plot_fdset_30Mars.ipynb``: Auxiliary notebook that plots learning curve of the model.
 ```bash
-$ python plot_learning_curves.py PATH_TO_MODEL/history.csv
+$ 
 ```
+
+- ``af_performance_fdset_30Mar.ipynb``: Auxiliary notebook that contains codes for the model performance evaluation.
+
+- ``survival_model.ipynb``: Auxiliary notebook that contains codes for survival modelling.
 
 OBS: Some scripts depend on the `resnet.py` and `dataloader.py` modules. So we recomend
 the user to, either, run the scripts from within this folder or add it to your python path.
