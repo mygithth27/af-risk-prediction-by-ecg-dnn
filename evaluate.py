@@ -13,13 +13,6 @@ import torch.nn.functional as F
 from dataloader import BatchDataloader
 
 
-def get_accuracy(Y_hat, Y):
-    #torch.argmax(input) → LongTensor :-> Returns the indices of the maximum value of all
-    #elements in the input tensor. (dim = 1 -> per row)
-    #return (Y_hat == Y).float().mean()
-    return (Y_hat == Y).mean()
-
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser( description='Evaluate AF class prediction model.', add_help=False)
     parser.add_argument('mdl', type=str,
@@ -83,112 +76,36 @@ if __name__ == "__main__":
     # Evaluate on test data
     model.eval()
 
-    if args.full_dset:
-        exam_info_df = pd.read_csv(args.path_to_csv, index_col=args.ids_col)
-        exam_info_df = exam_info_df.reindex(ids, fill_value=False, copy=True)
+    # Get dimension
+    n_total, n_samples, n_leads = traces.shape
+    n_batches = int(np.ceil(n_total/args.batch_size))
 
-        af_classes = exam_info_df[args.class_col]
+    predicted_class = np.zeros((n_total,N_CLASSES + 1))  # For class probabilities and predicted class
+    end = 0
+    for i in tqdm.tqdm(range(n_batches)):
+        start = end
+        end = min((i + 1) * args.batch_size, n_total)
+        with torch.no_grad():
+            x = torch.tensor(traces[start:end, :, :]).transpose(-1, -2)
+            x = x.to(device, dtype=torch.float32)
+            y_pred = model(x)
+            y_pred = F.softmax(y_pred, dim=1)
+            y_prob = y_pred
+            y_pred = y_pred.argmax(dim=1) + 1
+        predicted_class[start:end,:N_CLASSES] = y_prob.detach().cpu().numpy()
+        predicted_class[start:end, -1] = y_pred.detach().cpu().numpy()        #.astype(int)
 
-        '''
-        For testing the model on full dataset "traces100pc" , can select few traces with n_valid
-        Can also use traces15pc without class 0 (pre-selected).
-        '''
+    # Add normalized probabilities of classes 3 and 1
+    prob_sum = predicted_class[:,0] + predicted_class[:,2]
+    prob_class3_norm = predicted_class[:,2] / prob_sum
+    prob_class1_norm = predicted_class[:,0] / prob_sum
 
-        if args.n_valid > 0:
-            mask_chunk = np.arange(len(exam_info_df)) < args.n_valid
-        else:
-            mask_chunk = np.arange(len(exam_info_df)) < len(exam_info_df)  # Full dataset
-
-        #test_mask_0 = (exam_info_df[args.split_col] == "valid").to_numpy() # Using validation dataset (for threshold)
-        test_mask_0 = (exam_info_df[args.split_col] == "test").to_numpy()
-        test_mask = test_mask_0 & mask_chunk
-        n_total = sum(test_mask) #total number of samples used for testing
-
-        test_loader = BatchDataloader(traces, af_classes, bs=args.batch_size, mask=test_mask)
-
-        predicted_class = np.zeros((n_total,N_CLASSES + 1))  # For class probabilities and predicted class
-        end = 0
-
-        for traces, af_classes in tqdm.tqdm(test_loader):
-            start = end
-            end += len(traces)
-
-            with torch.no_grad():
-                traces = traces.transpose(1, 2)	# traces refer to x
-                traces = traces.to(device)
-                y_pred = model(traces)
-                y_pred = F.softmax(y_pred, dim=1)
-                y_prob = y_pred
-                y_pred = y_pred.argmax(dim=1) + 1
-            predicted_class[start:end,:N_CLASSES] = y_prob.detach().cpu().numpy()
-            predicted_class[start:end, -1] = y_pred.detach().cpu().numpy()
-
-        # Add normalized probabilities of classes 3 and 1
-        prob_sum = predicted_class[:,0] + predicted_class[:,2]
-        prob_class3_norm = predicted_class[:,2] / prob_sum
-        prob_class1_norm = predicted_class[:,0] / prob_sum
-
-        # Save predictions
-        test_ids = ids[test_mask]
-        df = pd.DataFrame({'exam_ids': test_ids, 'predicted_class': predicted_class[:,-1],
-                           'prob_class1' : predicted_class[:,0],
-                           'prob_class2' : predicted_class[:,1],
-                           'prob_class3' : predicted_class[:,2],
-                           'prob_class1_norm' : prob_class1_norm,
-                           'prob_class3_norm' : prob_class3_norm })
-        df = df.set_index('exam_ids', drop=False)
-        df.to_csv(args.output)
-
-        # Calculate accuracy
-        if args.path_to_csv:
-            df2 = pd.read_csv(args.path_to_csv, index_col=args.ids_col)
-            df2 = df2.reindex(test_ids, fill_value=False, copy=True) # Keep ids that are in h5 file
-            y_true = np.array(df2[args.class_col])
-            accuracy = get_accuracy(predicted_class[:,-1], y_true)
-            print(f'The accuracy is: {accuracy * 100:.3f}%.')
-            #print('The accuracy is: {:6.3f}%.'.format(accuracy * 100))
-
-    else:
-        # Get dimension
-        n_total, n_samples, n_leads = traces.shape
-        n_batches = int(np.ceil(n_total/args.batch_size))
-
-        predicted_class = np.zeros((n_total,N_CLASSES + 1))  # For class probabilities and predicted class
-        end = 0
-        for i in tqdm.tqdm(range(n_batches)):
-            start = end
-            end = min((i + 1) * args.batch_size, n_total)
-            with torch.no_grad():
-                x = torch.tensor(traces[start:end, :, :]).transpose(-1, -2)
-                x = x.to(device, dtype=torch.float32)
-                y_pred = model(x)
-                y_pred = F.softmax(y_pred, dim=1)
-                y_prob = y_pred
-                y_pred = y_pred.argmax(dim=1) + 1
-            predicted_class[start:end,:N_CLASSES] = y_prob.detach().cpu().numpy()
-            predicted_class[start:end, -1] = y_pred.detach().cpu().numpy()        #.astype(int)
-
-        # Add normalized probabilities of classes 3 and 1
-        prob_sum = predicted_class[:,0] + predicted_class[:,2]
-        prob_class3_norm = predicted_class[:,2] / prob_sum
-        prob_class1_norm = predicted_class[:,0] / prob_sum
-
-        # Save predictions
-        df = pd.DataFrame({'exam_ids': ids, 'predicted_class': predicted_class[:,-1],
-                           'prob_class1' : predicted_class[:,0],
-                           'prob_class2' : predicted_class[:,1],
-                           'prob_class3' : predicted_class[:,2],
-                           'prob_class1_norm' : prob_class1_norm,
-                           'prob_class3_norm' : prob_class3_norm })
-        df = df.set_index('exam_ids', drop=False)
-        df.to_csv(args.output)
-
-        # Calculate accuracy
-        if args.path_to_csv:
-            df2 = pd.read_csv(args.path_to_csv, index_col=args.ids_col)
-            h5ids = ff[args.ids_dset]
-            df2 = df2.reindex(h5ids, fill_value=False, copy=True) # Keep ids that are in h5 file
-            y_true = np.array(df2[args.class_col])
-            accuracy = get_accuracy(predicted_class[:,-1], y_true)
-            print(f'The accuracy is: {accuracy * 100:.3f}%.')
-            #print('The accuracy is: {:6.3f}%.'.format(accuracy * 100))
+    # Save predictions
+    df = pd.DataFrame({'exam_ids': ids, 'predicted_class': predicted_class[:,-1],
+                       'prob_class1' : predicted_class[:,0],
+                       'prob_class2' : predicted_class[:,1],
+                       'prob_class3' : predicted_class[:,2],
+                       'prob_class1_norm' : prob_class1_norm,
+                       'prob_class3_norm' : prob_class3_norm })
+    df = df.set_index('exam_ids', drop=False)
+    df.to_csv(args.output)
