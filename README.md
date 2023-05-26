@@ -2,8 +2,7 @@
 
 Scripts and modules for training and testing deep neural networks for predicting the risk of atrial fibrilation.
 In addition, codes for developing survival models in order to make risk analysis are provided.
-The paper is available at the
-[link.](paper/manuscript.pdf)
+The paper is available at the [link](misc/manuscript.pdf).
 
 Citation:
 ```
