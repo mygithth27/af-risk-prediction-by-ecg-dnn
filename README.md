@@ -52,8 +52,33 @@ unzip model.zip
 - model input: `shape = (N, 12, 4096)`. The input tensor should contain the 4096 points of the ECG tracings sampled at 400Hz (i.e., a signal of approximately 10 seconds). Both in the training and in the test set, when the signal was not long enough, we filled the signal with zeros, so 4096 points were attained. The last dimension of the tensor contains points of the 12 different leads. The leads are ordered in the following order: {DI, DII, DIII, AVR, AVL, AVF, V1, V2, V3, V4, V5, V6}. All signal are represented as 32 bits floating point numbers at the scale 1e-4V: so if the signal is in V it should be multiplied by 1000 before feeding it to the neural network model.
 - model output: `shape = (N, 3) `. The output corresponds to class probabilities for class 1 (No AF and without risk), class 2 (AF condition) and class 3 (No AF but with impending risk).
 
+## Example 
 
-## Requirements
+The following commands can be used to download the example dataset and the pre-trained model and evaluate 
+the model on a example dataset.
+```
+# Download example dataset
+curl https://zenodo.org/record/3765780/files/data.zip?download=1 --output data.zip
+unzip data.zip
+
+# Download model (if you have not done it already)
+curl https://zenodo.org/record/7038219/files/af_pred_model.zip?download=1 --output model.zip
+unzip model.zip # the folder containing the model will be named model_fdset_30Mar
+
+# Evaluate the model
+python evaluate.py model_fdset_30Mar data/ecg_tracings.hdf5 --traces_dset tracings --ids_dset "" --output predictions-codetest.csv
+
+# As a sanity check compare the results with the provided predictions
+# If correct you should get a message saying "Predicted probabilities are equal: True"
+# otherwise, you will get "Predicted probabilities are equal: False"!! 
+python test/compare_results.py predictions-codetest.csv results/results-on-codetest.csv
+```
+
+Analogously, the file `test/evaluate-code15pc.sh` can be used to evaluate the model on
+part of CODE-15\% dataset and compare the file `results/results-on-code.csv`.
+
+
+# Requirements
 
 This code was tested on Python 3 with Pytorch 1.2. It uses `numpy`, `pandas`, 
 `h5py` for  loading and processing the data and `matplotlib` and `seaborn`
@@ -65,7 +90,7 @@ https://github.com/antonior92/automatic-ecg-diagnosis. There we provide a tensor
 resnet-based model. The problem there is the abnormality classification from the ECG, nonetheless simple modifications 
 should suffice for dealing with age prediction
 
-## Folder content
+# Folder content
 
 - ``train.py``: Script for training the neural network. To train the neural network run:
 ```bash
@@ -93,22 +118,12 @@ $ python af_prediction_formulation.py PATH_TO_CSV
     - ``notebooks/af_performance.ipynb``: Auxiliary notebook for evaluate the model performance.
     
     - ``notebooks/survival_model.ipynb``: Auxiliary notebook that contains codes for survival modelling.
+    
+- `result/`: contain the results of the model evaluated on some dataset.
+- `archives/`: contain intermediate files used along the model development. 
 
 OBS: Some scripts depend on the `resnet.py` and `dataloader.py` modules. So we recomend
 the user to, either, run the scripts from within this folder or add it to your python path.
 
-
-
-## Example evaluating the model in some exams
-```
-# Download example dataset
-curl https://zenodo.org/record/3765780/files/data.zip?download=1 --output data.zip
-unzip data.zip
-
-# Downslod model
-curl https://zenodo.org/record/7038219/files/af_pred_model.zip?download=1 --output model.zip
-unzip model.zip # the folder containing the model will be named model_fdset_30Mar
-
-# Evaluate the model
-python evaluate.py model_fdset_30Mar data/ecg_tracings.hdf5 --traces_dset tracings --ids_dset "" --output predictions.csv
-```
+OBS2: The notebooks require some files that are not available in this repository! 
+But we keep them here so one can look at the analysis and plots.
