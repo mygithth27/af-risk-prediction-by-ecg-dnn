@@ -272,7 +272,7 @@ def get_ids(df, train_patient_ids, valid_patient_ids, test_patient_ids):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description='Generate data summary for the AF prediction problem')
-    parser.add_argument('--file', default='annotations.csv',
+    parser.add_argument('file', default='annotations.csv',
                         help='csv file to read data from (default:./annotations.csv)')
     parser.add_argument('--out_folder', default='out',
                         help='csv file to read data from (default:./annotations.csv)')
@@ -328,8 +328,8 @@ if __name__ == "__main__":
     # Save
     if not os.path.isdir(args.out_folder):
         os.mkdir(args.out_folder)
-    exams_info.to_csv(os.path.join(args.out_folder, 'exams_info.csv'))
-    patients_info.to_csv(os.path.join(args.out_folder, 'patients_info'))
+    exams_info.to_csv(os.path.join(args.out_folder, 'exams_info.csv'), index=False)
+    patients_info.to_csv(os.path.join(args.out_folder, 'patients_info.csv'), index=False)
 
     # Print info
     if not args.silent:
