@@ -107,5 +107,5 @@ if __name__ == "__main__":
                        'prob_class3' : predicted_class[:,2],
                        'prob_class1_norm' : prob_class1_norm,
                        'prob_class3_norm' : prob_class3_norm })
-    df = df.set_index('exam_ids', drop=False)
+    df = df.set_index('exam_ids', drop=True) # Evoid producing 2 columns of 'exam_ids'
     df.to_csv(args.output)

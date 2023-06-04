@@ -93,12 +93,10 @@ def get_extended_dataframe(path_to_csv, min_deltatime, max_deltatime):
 
     # Get time before last exam for group 1
     time_to_last_exam = np.zeros(n_exams, dtype='timedelta64[ns]')
-    #time_to_last_exam = np.zeros(n_exams, dtype='int64')  # use type int instead
     for n in range(n_exams):
         if (group_exam[n] == 1) & (next_exam_id[n] != -1):
             n_patient = hash_patients[patient_ids[n]]
             time_to_last_exam[n] = date_last_exam[n_patient] - date[n]
-            #time_to_last_exam[n] = (date_last_exam[n_patient] - date[n])/ np.timedelta64(1, 's')  # time in days
 
     # Convert to weeks
     time_to_last_exam = (time_to_last_exam / ((1e9) * 60 * 60 * 24 * 7)).astype(int)
@@ -112,16 +110,13 @@ def get_extended_dataframe(path_to_csv, min_deltatime, max_deltatime):
 
     # Get time before first apperance
     time_to_first_appearance = np.zeros(n_exams, dtype='timedelta64[ns]')
-    #time_to_first_appearance = np.zeros(n_exams, dtype='int64')   # use type int instead
     for n in range(n_exams):
         if (group_exam[n] == 3) & (count_appearances_exam[n] < 1):
             n_patient = hash_patients[patient_ids[n]]
             time_to_first_appearance[n] = date_first_appearance[n_patient] - date[n]
-            #time_to_first_appearance[n] = (date_first_appearance[n_patient] - date[n])/ np.timedelta64(1, 's')   # time in days
 
     # Convert to weeks
     time_to_first_appearance = (time_to_first_appearance / ((1e9) * 60 * 60 * 24 * 7)).astype(int)
-    #time_to_first_appearance = np.array(time_to_first_appearance, dtype=int) // 7 * 3600
 
     # Get class 3
     exam_class[(group_exam == 3) & (count_appearances_exam < 1) &
@@ -210,23 +205,16 @@ def get_patient_ids(df_patient, valid_split, test_split, seed=0):
     rng = np.random.RandomState(seed)
 
     # Get patients from group 1 class 1
-    #patients_g1_c1 = list(df_patient.index[(df_patient['group'] == 1) & ~df_patient['not_in_class_{}'.format(0)]])
     patients_g1_c1 = list(df_patient.loc[(df_patient['group'] == 1) & ~df_patient['not_in_class_{}'.format(0)], 'patient_ids'])  # returning patient's id, not index
     
     # Get patients from group 2 class 2
-    #patients_g2_c2 = list(df_patient.index[(df_patient['group'] == 2) & ~df_patient['not_in_class_{}'.format(1)]])
     patients_g2_c2 = list(df_patient.loc[(df_patient['group'] == 2) & ~df_patient['not_in_class_{}'.format(1)], 'patient_ids'])  #  returning patients' ids
     
-    # Get patients from group 3 class 2 (and not in class 1)    # maybe not in class 3
-    # Before change, Common p_ids train-test:  1822,    Common exam_ids train-test:  1714
-    #patients_g3_c2 = list(df_patient.index[(df_patient['group'] == 3) & ~df_patient['not_in_class_{}'.format(1)]])
-    #patients_g3_c2 = list(df_patient.index[(df_patient['group'] == 3) & ~df_patient['not_in_class_{}'.format(1)]
-        #& df_patient['not_in_class_{}'.format(2)]]) # Group 3 and class 2, without having exam_id in class 3
+    # Get patients from group 3 class 2 (and not in class 3)
     patients_g3_c2 = list(df_patient.loc[(df_patient['group'] == 3) & ~df_patient['not_in_class_{}'.format(1)]
         & df_patient['not_in_class_{}'.format(2)], 'patient_ids'])  # returning patients' ids
 
     # Get patients from group 3 class 3
-    #patients_g3_c3 = list(df_patient.index[(df_patient['group'] == 3) & ~df_patient['not_in_class_{}'.format(2)]])
     patients_g3_c3 = list(df_patient.loc[(df_patient['group'] == 3) & ~df_patient['not_in_class_{}'.format(2)], 'patient_ids']) # returning patients' ids
 
     train_ids, valid_ids, test_ids = [], [], []
@@ -261,11 +249,7 @@ def get_ids(df, train_patient_ids, valid_patient_ids, test_patient_ids):
     ids = []
     for p_ids in patient_ids:
         ixs = df["id_patient"].isin(p_ids) & (df['exam_class'] != 0) & (df['group_exam'] != 0)  # index mask
-
-        #index_list = list(df.index[ixs])
-        #index_mask = np.isin(df.index, index_list)
         ex_ids = list(df.loc[ixs, 'id_exam'])
-        #ids.append(list(df.index[ixs]))
         ids.append(ex_ids)
     return ids
 
@@ -316,7 +300,6 @@ if __name__ == "__main__":
         
     set2 = set(train_exam_ids)
     common_ids = set2.intersection(test_exam_ids)
-    #print("Common exam_ids train-test: {}".format(common_ids))
     print("test_exam ids: ", len(test_exam_ids))
     print("Common exam_ids train-test: ", len(common_ids))
     
@@ -342,13 +325,11 @@ if __name__ == "__main__":
 
         # Generate plots
         fig, ax = plt.subplots(ncols=2)
-        #sns.distplot(exams_info['time_to_first_appearance'], kde=False, norm_hist=False, bins=np.logspace(-1, 3, 10), ax=ax[0])
         sns.histplot(data=exams_info['time_to_first_appearance'], kde=False,  bins=np.logspace(-1, 3, 10), ax=ax[0]) # or seaborn.displot
         ax[0].set(xscale='log',)
         ax[0].set(xticks=[0.1, 1, 10, 100, 1000])
         ax[0].set_xticklabels(['16 hours', '1 week', '3 months', '2 years', '20 years'], rotation=40)
         ax[0].set_title('time before first appearance (group 3)')
-        #sns.distplot(exams_info['time_to_last_exam'], kde=False, norm_hist=False, bins=np.logspace(-1, 3, 10), ax=ax[1])
         sns.histplot(data=exams_info['time_to_last_exam'], kde=False, bins=np.logspace(-1, 3, 10), ax=ax[1])
         ax[1].set(xscale='log',)
         ax[1].set(xticks=[0.1, 1, 10, 100, 1000])
